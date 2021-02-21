@@ -91,7 +91,8 @@ func (a *AlertmanagerCommand) setup(k *kingpin.ParseContext) error {
 }
 
 func (a *AlertmanagerCommand) getConfig(k *kingpin.ParseContext) error {
-	cfg, templates, err := a.cli.GetAlertmanagerConfig(context.Background())
+	ctx := client.NewContextWithTenantId(context.Background(), a.ClientConfig.ID)
+	cfg, templates, err := a.cli.GetAlertmanagerConfig(ctx)
 	if err != nil {
 		if err == client.ErrResourceNotFound {
 			log.Infof("no alertmanager config currently exist for this user")
@@ -125,12 +126,13 @@ func (a *AlertmanagerCommand) loadConfig(k *kingpin.ParseContext) error {
 		}
 		templates[f] = string(tmpl)
 	}
-
-	return a.cli.CreateAlertmanagerConfig(context.Background(), cfg, templates)
+	ctx := client.NewContextWithTenantId(context.Background(), a.ClientConfig.ID)
+	return a.cli.CreateAlertmanagerConfig(ctx, cfg, templates)
 }
 
 func (a *AlertmanagerCommand) deleteConfig(k *kingpin.ParseContext) error {
-	err := a.cli.DeleteAlermanagerConfig(context.Background())
+	ctx := client.NewContextWithTenantId(context.Background(), a.ClientConfig.ID)
+	err := a.cli.DeleteAlermanagerConfig(ctx)
 	if err != nil && err != client.ErrResourceNotFound {
 		return err
 	}
@@ -196,7 +198,8 @@ func (a *AlertCommand) verifyConfig(k *kingpin.ParseContext) error {
 
 	query := fmt.Sprintf("%s or %s", lhs, rhs)
 	if a.CheckFrequency <= 0 {
-		_, err := a.runVerifyQuery(context.Background(), query)
+		ctx := client.NewContextWithTenantId(context.Background(), a.ClientConfig.ID)
+		_, err := a.runVerifyQuery(ctx, query)
 		return err
 	}
 

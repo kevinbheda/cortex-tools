@@ -9,3 +9,4 @@ cmd/e2ealerting/e2ealerting
 images/
 dist/
 .DS_STORE
+.idea/*

@@ -25,6 +25,8 @@ var (
 	ErrNoConfig         = errors.New("No config exists for this user")
 	ErrResourceNotFound = errors.New("requested resource not found")
 )
+type xScopeOrgID int
+const tenantKey xScopeOrgID = 0;
 
 // Config is used to configure a Ruler Client
 type Config struct {
@@ -94,15 +96,14 @@ func (r *CortexClient) Query(ctx context.Context, query string) (*http.Response,
 	query = fmt.Sprintf("query=%s&time=%d", query, time.Now().Unix())
 	escapedQuery := url.PathEscape(query)
 
-	res, err := r.doRequest("/api/prom/api/v1/query?"+escapedQuery, "GET", nil)
+	res, err := r.doRequest(ctx, "/api/prom/api/v1/query?"+escapedQuery, "GET", nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return res, nil
 }
-
-func (r *CortexClient) doRequest(path, method string, payload []byte) (*http.Response, error) {
+func (r *CortexClient) doRequest(ctx context.Context, path, method string, payload []byte) (*http.Response, error) {
 	req, err := buildRequest(path, method, *r.endpoint, payload)
 	if err != nil {
 		return nil, err
@@ -112,7 +113,9 @@ func (r *CortexClient) doRequest(path, method string, payload []byte) (*http.Res
 		req.SetBasicAuth(r.id, r.key)
 	}
 
-	req.Header.Add("X-Scope-OrgID", r.id)
+	if tenantID, ok := TenantIdFromContext(ctx); ok {
+		req.Header.Add("X-Scope-OrgID", tenantID)
+	}
 
 	log.WithFields(log.Fields{
 		"url":    req.URL.String(),
@@ -187,4 +190,13 @@ func buildRequest(p, m string, endpoint url.URL, payload []byte) (*http.Request,
 	}
 	endpoint.Path = path.Join(endpoint.Path, pURL.Path)
 	return http.NewRequest(m, endpoint.String(), bytes.NewBuffer(payload))
+}
+
+func NewContextWithTenantId(ctx context.Context, tenatId string) context.Context {
+	return context.WithValue(ctx, tenantKey, tenatId)
+}
+
+func TenantIdFromContext(ctx context.Context) (string, bool) {
+	tenantId, ok := ctx.Value(tenantKey).(string)
+	return tenantId, ok
 }

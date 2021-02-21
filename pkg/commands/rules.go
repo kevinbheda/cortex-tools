@@ -311,7 +311,8 @@ func (r *RuleCommand) setupFiles() error {
 }
 
 func (r *RuleCommand) listRules(k *kingpin.ParseContext) error {
-	rules, err := r.cli.ListRules(context.Background(), "")
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
+	rules, err := r.cli.ListRules(ctx, "")
 	if err != nil {
 		log.Fatalf("unable to read rules from cortex, %v", err)
 
@@ -322,7 +323,8 @@ func (r *RuleCommand) listRules(k *kingpin.ParseContext) error {
 }
 
 func (r *RuleCommand) printRules(k *kingpin.ParseContext) error {
-	rules, err := r.cli.ListRules(context.Background(), "")
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
+	rules, err := r.cli.ListRules(ctx, "")
 	if err != nil {
 		if err == client.ErrResourceNotFound {
 			log.Infof("no rule groups currently exist for this user")
@@ -336,7 +338,8 @@ func (r *RuleCommand) printRules(k *kingpin.ParseContext) error {
 }
 
 func (r *RuleCommand) getRuleGroup(k *kingpin.ParseContext) error {
-	group, err := r.cli.GetRuleGroup(context.Background(), r.Namespace, r.RuleGroup)
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
+	group, err := r.cli.GetRuleGroup(ctx, r.Namespace, r.RuleGroup)
 	if err != nil {
 		if err == client.ErrResourceNotFound {
 			log.Infof("this rule group does not currently exist")
@@ -350,7 +353,8 @@ func (r *RuleCommand) getRuleGroup(k *kingpin.ParseContext) error {
 }
 
 func (r *RuleCommand) deleteRuleGroup(k *kingpin.ParseContext) error {
-	err := r.cli.DeleteRuleGroup(context.Background(), r.Namespace, r.RuleGroup)
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
+	err := r.cli.DeleteRuleGroup(ctx, r.Namespace, r.RuleGroup)
 	if err != nil && err != client.ErrResourceNotFound {
 		log.Fatalf("unable to delete rule group from cortex, %v", err)
 	}
@@ -363,10 +367,11 @@ func (r *RuleCommand) loadRules(k *kingpin.ParseContext) error {
 		return errors.Wrap(err, "load operation unsuccessful, unable to parse rules files")
 	}
 	ruleLoadTimestamp.SetToCurrentTime()
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
 
 	for _, ns := range nss {
 		for _, group := range ns.Groups {
-			curGroup, err := r.cli.GetRuleGroup(context.Background(), ns.Namespace, group.Name)
+			curGroup, err := r.cli.GetRuleGroup(ctx, ns.Namespace, group.Name)
 			if err != nil && err != client.ErrResourceNotFound {
 				return errors.Wrap(err, "load operation unsuccessful, unable to contact cortex api")
 			}
@@ -386,7 +391,7 @@ func (r *RuleCommand) loadRules(k *kingpin.ParseContext) error {
 				}).Infof("updating group")
 			}
 
-			err = r.cli.CreateRuleGroup(context.Background(), ns.Namespace, group)
+			err = r.cli.CreateRuleGroup(ctx, ns.Namespace, group)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"group":     group.Name,
@@ -423,8 +428,8 @@ func (r *RuleCommand) diffRules(k *kingpin.ParseContext) error {
 	if err != nil {
 		return errors.Wrap(err, "diff operation unsuccessful, unable to parse rules files")
 	}
-
-	currentNamespaceMap, err := r.cli.ListRules(context.Background(), "")
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
+	currentNamespaceMap, err := r.cli.ListRules(ctx, "")
 	//TODO: Skipping the 404s here might end up in an unsual scenario.
 	// If we're unable to reach the Cortex API due to a bad URL, we'll assume no rules are
 	// part of the namespace and provide a diff of the whole ruleset.
@@ -486,8 +491,8 @@ func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
 	if err != nil {
 		return errors.Wrap(err, "sync operation unsuccessful, unable to parse rules files")
 	}
-
-	currentNamespaceMap, err := r.cli.ListRules(context.Background(), "")
+	ctx := client.NewContextWithTenantId(context.Background(), r.ClientConfig.ID)
+	currentNamespaceMap, err := r.cli.ListRules(ctx, "")
 	//TODO: Skipping the 404s here might end up in an unsual scenario.
 	// If we're unable to reach the Cortex API due to a bad URL, we'll assume no rules are
 	// part of the namespace and provide a diff of the whole ruleset.
@@ -535,7 +540,7 @@ func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
 		})
 	}
 
-	err = r.executeChanges(context.Background(), changes)
+	err = r.executeChanges(ctx, changes)
 	if err != nil {
 		return errors.Wrap(err, "sync operation unsuccessful, unable to complete executing changes.")
 	}
@@ -545,6 +550,7 @@ func (r *RuleCommand) syncRules(k *kingpin.ParseContext) error {
 
 func (r *RuleCommand) executeChanges(ctx context.Context, changes []rules.NamespaceChange) error {
 	var err error
+	contextWithTenantId := client.NewContextWithTenantId(ctx, r.ClientConfig.ID)
 	for _, ch := range changes {
 		for _, g := range ch.GroupsCreated {
 			if !r.shouldCheckNamespace(ch.Namespace) {
@@ -555,7 +561,7 @@ func (r *RuleCommand) executeChanges(ctx context.Context, changes []rules.Namesp
 				"group":     g.Name,
 				"namespace": ch.Namespace,
 			}).Infof("creating group")
-			err = r.cli.CreateRuleGroup(ctx, ch.Namespace, g)
+			err = r.cli.CreateRuleGroup(contextWithTenantId, ch.Namespace, g)
 			if err != nil {
 				return err
 			}
@@ -570,7 +576,7 @@ func (r *RuleCommand) executeChanges(ctx context.Context, changes []rules.Namesp
 				"group":     g.New.Name,
 				"namespace": ch.Namespace,
 			}).Infof("updating group")
-			err = r.cli.CreateRuleGroup(ctx, ch.Namespace, g.New)
+			err = r.cli.CreateRuleGroup(contextWithTenantId, ch.Namespace, g.New)
 			if err != nil {
 				return err
 			}
@@ -585,7 +591,7 @@ func (r *RuleCommand) executeChanges(ctx context.Context, changes []rules.Namesp
 				"group":     g.Name,
 				"namespace": ch.Namespace,
 			}).Infof("deleting group")
-			err = r.cli.DeleteRuleGroup(ctx, ch.Namespace, g.Name)
+			err = r.cli.DeleteRuleGroup(contextWithTenantId, ch.Namespace, g.Name)
 			if err != nil && err != client.ErrResourceNotFound {
 				return err
 			}
